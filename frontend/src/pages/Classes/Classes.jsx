@@ -1,11 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { useAxiosFetch } from '../../hooks/useAxiosFetch';
-import { Link } from '@mui/material';
+import { Link } from 'react-router-dom';
+import { Transition } from '@headlessui/react';
+import useUser from '../../hooks/useUser';
+import useAxiosSecure from '../../hooks/useAxiosSecure';
+import { toast } from 'react-toastify';
 
 const Classes = () => {
   const [classes, setClasses] = useState([]);
+  const { currentUser } = useUser();
+  const role = currentUser?.role;
+  const [enrolledClasses, setEnrolledClasses] = useState([]);
+
   const [hoveredCard, setHoveredCard] = useState(null);
   const axiosFetch = useAxiosFetch();
+  const axiosSecure = useAxiosSecure();
 
   const handleHover = (index) => {
     setHoveredCard(index);
@@ -18,7 +27,51 @@ const Classes = () => {
       .catch((err) => console.log(err));
   }, []);
 
-  console.log(classes);
+  // handle add to cart list
+  const handleSelect = (id) => {
+    axiosSecure
+      .get(`/enrolled-classes/${currentUser.email}`)
+      .then((res) => setEnrolledClasses(res.data))
+      .catch((err) => console.log(err));
+
+    if (!currentUser) {
+      return toast.error('Please Login First!');
+    }
+    axiosSecure
+      .get(`/cart-item/${id}?email=${currentUser.email}`)
+      .then((res) => {
+        if (res.data.clasId === id) {
+          return toast.error('already selected');
+        } else if (enrolledClasses.find((item) => item.classes._id === id)) {
+          return toast.error('Please Enrolled');
+        } else {
+          const data = {
+            classId: id,
+            userMail: currentUser.email,
+            data: new Date(),
+          };
+
+          toast.promise(axiosSecure.post('/add-to-cart', data)).then((res) => {
+            console.log(res.data);
+          }),
+            {
+              pending: 'Selecting...',
+              success: {
+                render({ data }) {
+                  return 'Selected Successfully';
+                },
+              },
+              error: {
+                render({ data }) {
+                  return `Error: ${data.message}`;
+                },
+              },
+            };
+        }
+      });
+  };
+
+  // console.log(classes);
   return (
     <div>
       <div className="mt-20 pt-3">
@@ -31,7 +84,7 @@ const Classes = () => {
           <div
             onMouseLeave={() => handleHover(null)}
             key={index}
-            className={`relative hover:-translate-y-2 duration-150 hover:ring-[2px] hover:ring-secondary w-64 h-[350px] mx-auto ${
+            className={`relative hover:-translate-y-2 duration-150 hover:ring-[2px] hover:ring-secondary w-64 mx-auto ${
               cls.availableSeats < 1 ? 'bg-red-300' : 'bg-white'
             } dark:bg-slate-600 rounded-lg shadow-lg overflow-hidden cursor-pointer`}
             onMouseEnter={() => handleHover(index)}
@@ -57,7 +110,22 @@ const Classes = () => {
                 LeaveTo="opacity-0"
               >
                 <div className="absolute insert-0 flex items-center justify-center">
-                  <button className="px-4 py-2 text-white disabled:bg-red-300 bg-secondary duration-300 rounded hover:bg-red-700">
+                  <button
+                    onClick={() => handleSelect(cls._id)}
+                    title={
+                      role == 'admin' || role === 'instructor'
+                        ? 'Instructor/Admin can not be able to select'
+                          ? cls.availableSeats < 1
+                          : 'No Seat Availble'
+                        : 'You can select Classes'
+                    }
+                    disabled={
+                      role === 'admin' ||
+                      role === 'instructor' ||
+                      cls.availableSeats < 1
+                    }
+                    className="px-4 py-2 text-white disabled:bg-red-300 bg-secondary duration-300 rounded hover:bg-red-700"
+                  >
                     Add to Cart
                   </button>
                 </div>
@@ -78,7 +146,7 @@ const Classes = () => {
                 </span>
               </div>
               <Link to={`/class/${cls._id}`}>
-                <button className="px-4 py-2 w-full mx-auto text-white disabled:bg-red-300 bg-secondary duration-300 rounded hover:bg-red-700">
+                <button className="px-4 py-2 mt-4 mb-2 w-full mx-auto text-white disabled:bg-red-300 bg-secondary duration-300 rounded hover:bg-red-700">
                   View
                 </button>
               </Link>
